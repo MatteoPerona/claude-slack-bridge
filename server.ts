@@ -12,12 +12,12 @@ import { join } from 'path'
 import { z } from 'zod'
 import { accept, chunk, formatPermission, parseEnv, parseVerdict, stillOwner, threadOf, type Config, type SlackMessage } from './lib.ts'
 
-const log = (msg: string) => process.stderr.write(`claude-slack-bridge: ${msg}\n`)
+const log = (msg: string) => process.stderr.write(`slack-bridge: ${msg}\n`)
 
 // --- Config: ~/.claude/channels/slack/.env, real env wins --------------------------
 const STATE_DIR = process.env.SLACK_STATE_DIR ?? join(homedir(), '.claude', 'channels', 'slack')
 const ENV_FILE = join(STATE_DIR, '.env')
-const LOCK_FILE = join(STATE_DIR, 'claude-slack-bridge.lock')
+const LOCK_FILE = join(STATE_DIR, 'slack-bridge.lock')
 try {
   for (const [k, v] of Object.entries(parseEnv(readFileSync(ENV_FILE, 'utf8')))) process.env[k] ??= v
 } catch {
@@ -62,14 +62,14 @@ const readLock = () => {
 
 // --- MCP server ----------------------------------------------------------------------
 const mcp = new Server(
-  { name: 'claude-slack-bridge', version: '0.1.0' },
+  { name: 'slack-bridge', version: '0.1.0' },
   {
     capabilities: {
       experimental: { 'claude/channel': {}, 'claude/channel/permission': {} },
       tools: {},
     },
     instructions: [
-      'Messages from the owner arrive as <channel source="claude-slack-bridge" thread_ts="..." message_ts="...">.',
+      'Messages from the owner arrive as <channel source="slack-bridge" thread_ts="..." message_ts="...">.',
       'The owner is usually away from the computer and may be using a voice interface that reads your replies aloud.',
       'Reply with the reply tool, passing thread_ts from the tag so the answer lands in the same thread. Start a new thread only for a new task.',
       'Write replies to be heard: short, plain sentences, no markdown tables, no code or diffs read out. Say what you did and what you need. Put long material in a file and give its path.',

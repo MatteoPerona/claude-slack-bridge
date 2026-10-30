@@ -1,8 +1,8 @@
 {
   "mcpServers": {
-    "claude-slack-bridge": {
+    "slack-bridge": {
       "command": "bun",
-      "args": ["/absolute/path/to/claude-slack-bridge/server.ts"]
+      "args": ["/absolute/path/to/slack-bridge/server.ts"]
     }
   }
 }

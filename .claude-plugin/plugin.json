@@ -1,0 +1,12 @@
+{
+  "name": "slack-bridge",
+  "displayName": "Slack Bridge",
+  "description": "Slack channel for Claude Code: drive a running session from one Slack channel, with native permission relay.",
+  "version": "0.1.0",
+  "author": { "name": "Matteo Perona", "url": "https://github.com/MatteoPerona" },
+  "homepage": "https://github.com/MatteoPerona/claude-slack-bridge",
+  "repository": "https://github.com/MatteoPerona/claude-slack-bridge",
+  "license": "Apache-2.0",
+  "keywords": ["slack", "messaging", "channel", "mcp"],
+  "channels": [{ "server": "slack-bridge", "displayName": "Slack" }]
+}

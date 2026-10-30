@@ -1,11 +1,11 @@
 {
-  "name": "claude-slack-bridge",
+  "name": "slack-bridge",
   "version": "0.1.0",
   "description": "Slack channel for Claude Code: talk to a running session from one Slack channel",
   "license": "Apache-2.0",
   "type": "module",
   "scripts": {
-    "start": "bun server.ts",
+    "start": "bun install --silent && bun server.ts",
     "test": "bun test"
   },
   "dependencies": {

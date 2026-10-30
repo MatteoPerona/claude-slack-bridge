@@ -1,0 +1,22 @@
+{
+  "name": "matteoperona-plugins",
+  "description": "Slack channel plugin for Claude Code",
+  "owner": {
+    "name": "Matteo Perona",
+    "url": "https://github.com/MatteoPerona"
+  },
+  "plugins": [
+    {
+      "name": "slack-bridge",
+      "source": "./",
+      "description": "Slack channel for Claude Code: drive a running session from one Slack channel, with native permission relay.",
+      "version": "0.1.0",
+      "category": "productivity",
+      "tags": [
+        "slack",
+        "messaging",
+        "channel"
+      ]
+    }
+  ]
+}

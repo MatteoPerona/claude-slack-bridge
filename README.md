@@ -10,21 +10,35 @@ A Slack [channel](https://code.claude.com/docs/en/channels-reference) for Claude
 - Tools: `reply`, `fetch_thread`. No file uploads, by design.
 - ~250 lines of TypeScript plus unit tests.
 
-## Setup
+## Install
 
-Requires [Bun](https://bun.sh) and a Claude Code version with channels support.
+Requires [Bun](https://bun.sh) and a Claude Code version with channels support (claude.ai or API-key login).
 
-1. Create the Slack app: api.slack.com/apps > Create New App > From a manifest, paste [slack-app-manifest.yml](slack-app-manifest.yml). Install it to your workspace and copy the bot token (`xoxb-...`). Generate an app-level token with `connections:write` (`xapp-...`).
-2. Create a channel, invite the bot, and note the channel ID and your own Slack user ID.
-3. Copy [examples/env.example](examples/env.example) to `~/.claude/channels/slack/.env`, fill it in, and `chmod 600` it. Never commit this file.
-4. `bun install`
-5. Copy [examples/mcp.json](examples/mcp.json), set the absolute path to `server.ts`, then start Claude Code with:
+1. **Create the Slack app.** At api.slack.com/apps choose Create New App > From a manifest and paste [slack-app-manifest.yml](slack-app-manifest.yml). Install it to your workspace and copy the bot token (`xoxb-...`). Generate an app-level token with `connections:write` (`xapp-...`).
+2. **Create a channel**, invite the bot, and note the channel ID and your own Slack user ID.
+3. **Add your config.** Copy [examples/env.example](examples/env.example) to `~/.claude/channels/slack/.env`, fill it in, and `chmod 600` it. Never commit this file.
+4. **Install the plugin** from inside Claude Code:
 
    ```
-   claude --mcp-config path/to/mcp.json --dangerously-load-development-channels server:claude-slack-bridge
+   /plugin marketplace add MatteoPerona/claude-slack-bridge
+   /plugin install slack-bridge@matteoperona-plugins
+   ```
+
+5. **Start a session with the channel enabled.** Channels are a research preview, and custom plugins are not on the approved list yet, so use the development flag:
+
+   ```
+   claude --dangerously-load-development-channels plugin:slack-bridge@matteoperona-plugins
    ```
 
 6. Post in the channel. Claude Code shows the message as a `<channel>` tag and replies with the `reply` tool.
+
+### Without the plugin system
+
+Clone the repo, run `bun install`, copy [examples/mcp.json](examples/mcp.json) and set the absolute path to `server.ts`, then:
+
+```
+claude --mcp-config path/to/mcp.json --dangerously-load-development-channels server:slack-bridge
+```
 
 Run the tests with `bun test`.
 
