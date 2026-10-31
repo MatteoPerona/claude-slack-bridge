@@ -17,10 +17,10 @@ For the end-to-end setup (Slack, voice Claude on your phone, and an always-on Ma
 Requirements:
 
 - [Bun](https://bun.sh): `brew install oven-sh/bun/bun`, or `curl -fsSL https://bun.sh/install | bash`.
-- Claude Code with channels support, logged in with a claude.ai account or a Console API key. On claude.ai Team and Enterprise plans an Owner must enable channels first. Minimum Claude Code version: TODO: verify.
+- A recent Claude Code release with channels support, logged in with a claude.ai account or a Console API key. On claude.ai Team and Enterprise plans an Owner must enable channels first.
 - A Slack workspace where you can create and install apps.
 
-The plugin has no macOS-specific code and should run wherever Bun and Claude Code run; the author has only run it on macOS. The always-on runner in [voice-to-claude-code](https://github.com/MatteoPerona/voice-to-claude-code) is macOS only.
+The plugin has no macOS-specific code and should run wherever Bun and Claude Code run. The always-on runner in [voice-to-claude-code](https://github.com/MatteoPerona/voice-to-claude-code) is macOS only.
 
 1. **Create the Slack app.** At api.slack.com/apps choose Create New App > From a manifest and paste [slack-app-manifest.yml](slack-app-manifest.yml). Install it to your workspace and copy the bot token (`xoxb-...`). Generate an app-level token with `connections:write` (`xapp-...`).
 2. **Create a channel**, invite the bot, and note the channel ID and your own Slack user ID (see [Finding the IDs](#finding-the-ids)).
@@ -98,3 +98,5 @@ Built with the [Model Context Protocol SDK](https://github.com/modelcontextproto
 ## License
 
 [Apache 2.0](LICENSE)
+
+Open items for maintainers: [MAINTAINERS.md](MAINTAINERS.md).
