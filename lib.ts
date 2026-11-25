@@ -90,10 +90,24 @@ export function formatPermission(p: {
   )
 }
 
-// Single-instance lock: the lock file holds the PID of the newest bridge. An instance
-// keeps listening only while the file still names it; a new session takes over by
-// writing its own PID. Unreadable or empty content counts as "still ours", so a
-// missing file never silences the only running bridge.
+// Single-instance lock: the lock file holds the PID of the instance that owns the Slack
+// connection. A starting instance takes the bridge only when no live instance holds it,
+// so opening another session never silences the one already listening. The exception is
+// an explicit takeover (SLACK_BRIDGE_TAKEOVER=1, set by an always-on launcher).
+// `alive` reports whether a PID is a running process.
+export function shouldTakeBridge(
+  lockContent: string | null,
+  takeover: boolean,
+  alive: (pid: number) => boolean,
+): boolean {
+  if (takeover) return true
+  const owner = Number.parseInt((lockContent ?? '').trim(), 10)
+  return !(owner > 0) || !alive(owner) // no valid PID, or a stale lock
+}
+
+// The owner keeps listening only while the lock still names it; a takeover replaces the
+// PID. Unreadable or empty content counts as "still ours", so a missing file never
+// silences the only running bridge.
 export function stillOwner(lockContent: string | null, pid: number): boolean {
   const owner = Number.parseInt((lockContent ?? '').trim(), 10)
   return !Number.isFinite(owner) || owner === pid

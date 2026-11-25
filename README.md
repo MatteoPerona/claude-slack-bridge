@@ -8,7 +8,7 @@ For the end-to-end setup (Slack, voice Claude on your phone, and an always-on Ma
 - Slack Socket Mode. No public URL, no open ports.
 - Native permission relay: when a tool needs approval, the prompt is posted to Slack with a 5-letter code. Reply `yes abcde` or `no abcde`. Tolerates dictation ("Yes, abcde.").
 - Threads: replies go to the thread of the latest message; `new_thread` starts a new one.
-- Single-instance lock: Slack hands each event to only one open connection, so the newest session takes over and older ones step down.
+- Single-instance lock: Slack hands each event to only one open connection, so one session holds the bridge and any other session that loads the plugin stays off Slack (see [Single instance](#single-instance)).
 - Tools: `reply`, `fetch_thread`. No file uploads, by design.
 - ~250 lines of TypeScript plus unit tests.
 
@@ -67,6 +67,13 @@ Run the tests with `bun test`.
 | `SLACK_CHANNELS` | Channel ID the bridge uses (first entry used) |
 | `SLACK_OWNER_APPS` | Optional, comma-separated app IDs allowed to post as the owner |
 | `SLACK_STATE_DIR` | Optional, defaults to `~/.claude/channels/slack` (holds `.env` and the lock file) |
+| `SLACK_BRIDGE_TAKEOVER` | Optional. `1` makes this session take the bridge from a live one (see [Single instance](#single-instance)). Read from the real environment only |
+
+### Single instance
+
+The session that connects to Slack writes its PID to `slack-bridge.lock` in the state directory. A session that starts while that PID is alive stays passive: it logs one line, never opens a Slack connection, and its tools return an error. So opening another session in a folder where the plugin is enabled does not disturb the one already listening. A passive session stays passive for its lifetime, even after the owner exits; restart it to connect.
+
+To replace a live session on purpose, start the new one with `SLACK_BRIDGE_TAKEOVER=1` in its environment (`SLACK_BRIDGE_TAKEOVER=1 claude ...`). The old one notices within about 2 seconds, closes its Slack connection, and goes passive. An always-on launcher should set it, so a restart always gets Slack back. Do not put the variable in `.env`: that file is shared by every session, so it is ignored there. Anything that session launches inherits the variable, so a `claude` it starts where the plugin is enabled takes over as well.
 
 ### Finding the IDs
 

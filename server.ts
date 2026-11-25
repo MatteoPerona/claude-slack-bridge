@@ -10,7 +10,7 @@ import { readFileSync, unlinkSync, writeFileSync } from 'fs'
 import { homedir } from 'os'
 import { join } from 'path'
 import { z } from 'zod'
-import { accept, chunk, formatPermission, parseEnv, parseVerdict, stillOwner, threadOf, type Config, type SlackMessage } from './lib.ts'
+import { accept, chunk, formatPermission, parseEnv, parseVerdict, shouldTakeBridge, stillOwner, threadOf, type Config, type SlackMessage } from './lib.ts'
 
 const log = (msg: string) => process.stderr.write(`slack-bridge: ${msg}\n`)
 
@@ -18,6 +18,8 @@ const log = (msg: string) => process.stderr.write(`slack-bridge: ${msg}\n`)
 const STATE_DIR = process.env.SLACK_STATE_DIR ?? join(homedir(), '.claude', 'channels', 'slack')
 const ENV_FILE = join(STATE_DIR, '.env')
 const LOCK_FILE = join(STATE_DIR, 'slack-bridge.lock')
+// Read before the .env load: set in that file it would apply to every session.
+const TAKEOVER = process.env.SLACK_BRIDGE_TAKEOVER === '1'
 try {
   for (const [k, v] of Object.entries(parseEnv(readFileSync(ENV_FILE, 'utf8')))) process.env[k] ??= v
 } catch {
@@ -50,7 +52,8 @@ const slack = new App({ token: SLACK_BOT_TOKEN, appToken: SLACK_APP_TOKEN, socke
 // The thread of the latest inbound message: default target for replies and approval prompts.
 let lastThread: string | undefined
 
-// False once a newer bridge session takes over the lock (see stillOwner in lib.ts).
+// False while another session holds the bridge: from the start for a passive copy, or
+// once a takeover replaces us in the lock (see shouldTakeBridge and stillOwner in lib.ts).
 let active = true
 const readLock = () => {
   try {
@@ -59,10 +62,18 @@ const readLock = () => {
     return null
   }
 }
+const pidAlive = (pid: number) => {
+  try {
+    process.kill(pid, 0) // signal 0 only checks that the process exists
+    return true
+  } catch {
+    return false
+  }
+}
 
 // --- MCP server ----------------------------------------------------------------------
 const mcp = new Server(
-  { name: 'slack-bridge', version: '0.1.0' },
+  { name: 'slack-bridge', version: '0.1.1' },
   {
     capabilities: {
       experimental: { 'claude/channel': {}, 'claude/channel/permission': {} },
@@ -111,7 +122,7 @@ mcp.setRequestHandler(CallToolRequestSchema, async (req) => {
   const args = (req.params.arguments ?? {}) as Record<string, unknown>
   if (!active) {
     return {
-      content: [{ type: 'text', text: 'error: a newer session took over the Slack bridge; this session no longer sends or receives Slack messages.' }],
+      content: [{ type: 'text', text: 'error: another session holds the Slack bridge; this session does not send or receive Slack messages.' }],
       isError: true,
     }
   }
@@ -188,27 +199,35 @@ slack.message(async ({ message }) => {
 
 // --- Start ---------------------------------------------------------------------------
 await mcp.connect(new StdioServerTransport())
-try {
-  await slack.start()
-  const auth = await slack.client.auth.test()
-  cfg.botUserId = auth.user_id
-  log(`connected as ${auth.user}; listening to ${cfg.owner} in ${cfg.channel}`)
-} catch (err) {
-  log(`slack start failed: ${err}`)
-  process.exit(1)
-}
 
-// Take over the bridge, then step down if a newer session takes it from us. The older
-// process stays alive (Claude Code keeps its MCP server) but closes its Slack connection,
-// because Slack hands each event to only one open connection.
-writeFileSync(LOCK_FILE, `${process.pid}\n`, { mode: 0o600 })
-const watch = setInterval(async () => {
-  if (stillOwner(readLock(), process.pid)) return
+// Slack hands each event to only one open connection, so a copy that does not own the
+// bridge must not open one at all. It stays passive for its lifetime; the process stays
+// alive because Claude Code keeps its MCP server.
+if (shouldTakeBridge(readLock(), TAKEOVER, pidAlive)) {
+  try {
+    await slack.start()
+    const auth = await slack.client.auth.test()
+    cfg.botUserId = auth.user_id
+    log(`connected as ${auth.user}; listening to ${cfg.owner} in ${cfg.channel}`)
+  } catch (err) {
+    log(`slack start failed: ${err}`)
+    process.exit(1)
+  }
+
+  // Take the lock, then step down if a takeover replaces us: close the Slack connection
+  // and go passive.
+  writeFileSync(LOCK_FILE, `${process.pid}\n`, { mode: 0o600 })
+  const watch = setInterval(async () => {
+    if (stillOwner(readLock(), process.pid)) return
+    active = false
+    clearInterval(watch)
+    log('another session took over the bridge; closing the Slack connection')
+    await slack.stop().catch((err) => log(`slack stop failed: ${err}`))
+  }, 2000)
+} else {
   active = false
-  clearInterval(watch)
-  log('a newer session took over the bridge; closing the Slack connection')
-  await slack.stop().catch((err) => log(`slack stop failed: ${err}`))
-}, 2000)
+  log(`a live session holds the bridge (lock pid ${readLock()?.trim()}); staying off Slack. Set SLACK_BRIDGE_TAKEOVER=1 to take over.`)
+}
 
 const releaseLock = () => {
   if (readLock()?.trim() === String(process.pid)) {
