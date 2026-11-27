@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test'
-import { accept, chunk, formatPermission, parseEnv, parseVerdict, shouldTakeBridge, stillOwner, threadOf } from '../lib.ts'
+import { HOLD_TIMEOUT_MS, accept, chunk, combine, formatPermission, holdExpired, parseEnv, parseVerdict, shouldHold, shouldTakeBridge, stillOwner, threadOf } from '../lib.ts'
 
 const cfg = { owner: 'UOWNER', channel: 'CBRIDGE', botUserId: 'UBOT' }
 const msg = { user: 'UOWNER', channel: 'CBRIDGE', ts: '1.1', text: 'hi' }
@@ -58,6 +58,39 @@ describe('formatPermission', () => {
     const s = formatPermission({ request_id: 'abcde', tool_name: 'Write', description: 'd', input_preview: 'z'.repeat(5000) })
     expect(s.length).toBeLessThan(1800)
   })
+})
+
+describe('shouldHold', () => {
+  test('idle session: deliver now', () => expect(shouldHold('do the thing', false)).toBe(false))
+  test('mid-turn: hold', () => expect(shouldHold('do the thing', true)).toBe(true))
+  test('a verdict passes even mid-turn', () => {
+    expect(shouldHold('yes abcde', true)).toBe(false)
+    expect(shouldHold('No, ABCDE.', true)).toBe(false)
+  })
+  test('text that only looks like a verdict is held', () => expect(shouldHold('yes please do it', true)).toBe(true))
+})
+
+describe('holdExpired', () => {
+  test('within the timeout', () => expect(holdExpired(1000, 1000 + HOLD_TIMEOUT_MS - 1)).toBe(false))
+  test('at the timeout', () => expect(holdExpired(1000, 1000 + HOLD_TIMEOUT_MS)).toBe(true))
+  test('the timeout is five minutes', () => expect(HOLD_TIMEOUT_MS).toBe(300_000))
+})
+
+describe('combine', () => {
+  const first = { text: 'first task', thread_ts: '1.1', message_ts: '1.1' }
+  const second = { text: 'a follow-up\non two lines', thread_ts: '1.1', message_ts: '2.2' }
+  const third = { text: 'another task', thread_ts: '3.3', message_ts: '3.3' }
+  test('one message goes out as if it had not been held', () =>
+    expect(combine([second])).toEqual({ content: 'a follow-up\non two lines', meta: { thread_ts: '1.1', message_ts: '2.2' } }))
+  test('several keep their order, text and own thread', () =>
+    expect(combine([first, second, third]).content).toBe(
+      '3 messages arrived while you were working, oldest first. Answer each in its own thread.\n\n' +
+        'Message 1 (thread_ts 1.1, message_ts 1.1):\nfirst task\n\n' +
+        'Message 2 (thread_ts 1.1, message_ts 2.2):\na follow-up\non two lines\n\n' +
+        'Message 3 (thread_ts 3.3, message_ts 3.3):\nanother task',
+    ))
+  test('meta carries the latest message', () =>
+    expect(combine([first, second, third]).meta).toEqual({ thread_ts: '3.3', message_ts: '3.3' }))
 })
 
 describe('shouldTakeBridge', () => {

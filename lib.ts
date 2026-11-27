@@ -90,6 +90,43 @@ export function formatPermission(p: {
   )
 }
 
+// Hold until idle: Claude Code takes a channel message that arrives while the session is
+// idle as the owner's instruction, but hands one that arrives mid-turn to Claude as
+// untrusted external data. So a message is held while a turn runs and delivered when it
+// ends. Permission verdicts are never held: the turn waiting on one is busy by definition.
+export function shouldHold(text: string, busy: boolean): boolean {
+  return busy && !parseVerdict(text)
+}
+
+// Safety net: an interrupted turn never reports its end, so held messages go out anyway
+// once the oldest has waited this long. They may then arrive mid-turn, as without holding.
+export const HOLD_TIMEOUT_MS = 5 * 60 * 1000
+
+export function holdExpired(heldSince: number, now: number): boolean {
+  return now - heldSince >= HOLD_TIMEOUT_MS
+}
+
+export type Inbound = { text: string; thread_ts: string; message_ts: string }
+
+// Everything held goes out as one notification: sent separately, the second would land
+// mid-turn again. A single message is delivered exactly as if it had not been held.
+// Several are listed oldest first, each under a line stating its own thread_ts and
+// message_ts so Claude can answer it in its thread; meta carries the latest message's.
+export function combine(msgs: Inbound[]): {
+  content: string
+  meta: { thread_ts: string; message_ts: string }
+} {
+  const last = msgs[msgs.length - 1]
+  const content =
+    msgs.length === 1
+      ? last.text
+      : `${msgs.length} messages arrived while you were working, oldest first. Answer each in its own thread.\n\n` +
+        msgs
+          .map((m, i) => `Message ${i + 1} (thread_ts ${m.thread_ts}, message_ts ${m.message_ts}):\n${m.text}`)
+          .join('\n\n')
+  return { content, meta: { thread_ts: last.thread_ts, message_ts: last.message_ts } }
+}
+
 // Single-instance lock: the lock file holds the PID of the instance that owns the Slack
 // connection. A starting instance takes the bridge only when no live instance holds it,
 // so opening another session never silences the one already listening. The exception is
