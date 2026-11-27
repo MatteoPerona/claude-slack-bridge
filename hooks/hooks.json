@@ -1,0 +1,26 @@
+{
+  "description": "Tell the bridge when a turn starts and ends, so it can hold Slack messages that arrive mid-turn.",
+  "hooks": {
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          { "type": "mcp_tool", "server": "plugin:slack-bridge:slack-bridge", "tool": "turn", "input": { "state": "busy" }, "timeout": 5 }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          { "type": "mcp_tool", "server": "plugin:slack-bridge:slack-bridge", "tool": "turn", "input": { "state": "idle" }, "timeout": 5 }
+        ]
+      }
+    ],
+    "StopFailure": [
+      {
+        "hooks": [
+          { "type": "mcp_tool", "server": "plugin:slack-bridge:slack-bridge", "tool": "turn", "input": { "state": "idle" }, "timeout": 5 }
+        ]
+      }
+    ]
+  }
+}

@@ -10,7 +10,7 @@
       "name": "slack-bridge",
       "source": "./",
       "description": "Slack channel for Claude Code: drive a running session from one Slack channel, with native permission relay.",
-      "version": "0.1.1",
+      "version": "0.2.0",
       "category": "productivity",
       "tags": [
         "slack",

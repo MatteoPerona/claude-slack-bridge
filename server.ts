@@ -10,7 +10,7 @@ import { readFileSync, unlinkSync, writeFileSync } from 'fs'
 import { homedir } from 'os'
 import { join } from 'path'
 import { z } from 'zod'
-import { accept, chunk, formatPermission, parseEnv, parseVerdict, shouldTakeBridge, stillOwner, threadOf, type Config, type SlackMessage } from './lib.ts'
+import { accept, chunk, combine, formatPermission, holdExpired, parseEnv, parseVerdict, shouldHold, shouldTakeBridge, stillOwner, threadOf, type Config, type Inbound, type SlackMessage } from './lib.ts'
 
 const log = (msg: string) => process.stderr.write(`slack-bridge: ${msg}\n`)
 
@@ -49,8 +49,16 @@ const stderrLogger = {
 }
 const slack = new App({ token: SLACK_BOT_TOKEN, appToken: SLACK_APP_TOKEN, socketMode: true, logger: stderrLogger })
 
-// The thread of the latest inbound message: default target for replies and approval prompts.
+// The thread of the latest inbound message, not counting held ones until they are delivered:
+// default target for replies and approval prompts.
 let lastThread: string | undefined
+
+// True while the session is mid-turn, as reported by the plugin's hooks through the turn
+// tool (see hooks/hooks.json). A fresh server is idle. Messages that arrive while busy
+// wait in `held` (see shouldHold in lib.ts).
+let busy = false
+const held: Inbound[] = []
+let heldSince = 0
 
 // False while another session holds the bridge: from the start for a passive copy, or
 // once a takeover replaces us in the lock (see shouldTakeBridge and stillOwner in lib.ts).
@@ -73,7 +81,7 @@ const pidAlive = (pid: number) => {
 
 // --- MCP server ----------------------------------------------------------------------
 const mcp = new Server(
-  { name: 'slack-bridge', version: '0.1.1' },
+  { name: 'slack-bridge', version: '0.2.0' },
   {
     capabilities: {
       experimental: { 'claude/channel': {}, 'claude/channel/permission': {} },
@@ -83,6 +91,7 @@ const mcp = new Server(
       'Messages from the owner arrive as <channel source="slack-bridge" thread_ts="..." message_ts="...">.',
       'The owner is usually away from the computer and may be using a voice interface that reads your replies aloud.',
       'Reply with the reply tool, passing thread_ts from the tag so the answer lands in the same thread. Start a new thread only for a new task.',
+      'Messages sent while you were working are held and arrive together in one tag when you finish. It lists each message with its own thread_ts: answer each in its own thread.',
       'Write replies to be heard: short, plain sentences, no markdown tables, no code or diffs read out. Say what you did and what you need. Put long material in a file and give its path.',
       'Post progress at milestones on long tasks, and a final reply when done. Never end a task silently.',
       'If you need a decision or have a question, ask it in the thread with the reply tool and wait for the answer. Do not use AskUserQuestion: nobody is at the terminal.',
@@ -115,11 +124,27 @@ mcp.setRequestHandler(ListToolsRequestSchema, async () => ({
         required: ['thread_ts'],
       },
     },
+    {
+      name: 'turn',
+      description: "Called by the plugin's hooks when a turn starts and ends. Not for Claude to call.",
+      inputSchema: {
+        type: 'object',
+        properties: { state: { type: 'string', enum: ['busy', 'idle'] } },
+        required: ['state'],
+      },
+    },
   ],
 }))
 
 mcp.setRequestHandler(CallToolRequestSchema, async (req) => {
   const args = (req.params.arguments ?? {}) as Record<string, unknown>
+  // Answered in a passive copy too: its session runs the same hooks. The text is an empty
+  // hook result; with no text Claude Code adds a "hook completed" line to Claude's context.
+  if (req.params.name === 'turn') {
+    busy = args.state === 'busy'
+    if (!busy) await flush()
+    return { content: [{ type: 'text', text: '{}' }] }
+  }
   if (!active) {
     return {
       content: [{ type: 'text', text: 'error: another session holds the Slack bridge; this session does not send or receive Slack messages.' }],
@@ -175,6 +200,23 @@ mcp.setNotificationHandler(PermissionRequestSchema, async ({ params }) => {
 })
 
 // --- Inbound Slack messages ----------------------------------------------------------
+const forward = async (msgs: Inbound[]) => {
+  const params = combine(msgs)
+  lastThread = params.meta.thread_ts
+  await mcp.notification({ method: 'notifications/claude/channel', params })
+}
+
+// Everything held goes out as one notification (see combine in lib.ts): when the turn
+// ends, or as a safety net once the oldest has waited HOLD_TIMEOUT_MS.
+const flush = async () => {
+  const msgs = held.splice(0)
+  if (!msgs.length) return
+  await forward(msgs)
+}
+setInterval(() => {
+  if (held.length && holdExpired(heldSince, Date.now())) flush().catch((err) => log(`failed to deliver held messages: ${err}`))
+}, 1000)
+
 const seen = new Set<string>()
 slack.message(async ({ message }) => {
   const msg = message as SlackMessage
@@ -184,6 +226,11 @@ slack.message(async ({ message }) => {
   if (seen.size > 1000) seen.delete(seen.values().next().value!)
 
   const thread = threadOf(msg)
+  if (shouldHold(msg.text!, busy)) {
+    if (!held.length) heldSince = Date.now()
+    held.push({ text: msg.text!, thread_ts: thread, message_ts: msg.ts! })
+    return
+  }
   lastThread = thread
 
   const verdict = parseVerdict(msg.text!)
@@ -191,10 +238,7 @@ slack.message(async ({ message }) => {
     await mcp.notification({ method: 'notifications/claude/channel/permission', params: verdict })
     return
   }
-  await mcp.notification({
-    method: 'notifications/claude/channel',
-    params: { content: msg.text!, meta: { thread_ts: thread, message_ts: msg.ts! } },
-  })
+  await forward([{ text: msg.text!, thread_ts: thread, message_ts: msg.ts! }])
 })
 
 // --- Start ---------------------------------------------------------------------------
