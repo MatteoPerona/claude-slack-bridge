@@ -206,12 +206,27 @@ const forward = async (msgs: Inbound[]) => {
   await mcp.notification({ method: 'notifications/claude/channel', params })
 }
 
+// Hourglass on a held message, removed on delivery. Calls run one after another so a
+// removal never overtakes its add. Cosmetic: a failure (e.g. the app lacks reactions:write)
+// is logged and holding goes on.
+let reactions = Promise.resolve()
+const react = (op: 'add' | 'remove', ts: string) => {
+  reactions = reactions.then(async () => {
+    try {
+      await slack.client.reactions[op]({ channel: cfg.channel, timestamp: ts, name: 'hourglass_flowing_sand' })
+    } catch (err) {
+      log(`failed to ${op} the hourglass reaction: ${err}`)
+    }
+  })
+}
+
 // Everything held goes out as one notification (see combine in lib.ts): when the turn
 // ends, or as a safety net once the oldest has waited HOLD_TIMEOUT_MS.
 const flush = async () => {
   const msgs = held.splice(0)
   if (!msgs.length) return
   await forward(msgs)
+  for (const m of msgs) react('remove', m.message_ts)
 }
 setInterval(() => {
   if (held.length && holdExpired(heldSince, Date.now())) flush().catch((err) => log(`failed to deliver held messages: ${err}`))
@@ -229,6 +244,7 @@ slack.message(async ({ message }) => {
   if (shouldHold(msg.text!, busy)) {
     if (!held.length) heldSince = Date.now()
     held.push({ text: msg.text!, thread_ts: thread, message_ts: msg.ts! })
+    react('add', msg.ts!)
     return
   }
   lastThread = thread

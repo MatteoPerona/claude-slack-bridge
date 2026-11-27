@@ -7,7 +7,7 @@ For the end-to-end setup (Slack, voice Claude on your phone, and an always-on Ma
 - One owner, one channel. Everything else is dropped: other users, other channels, bots, edits, file shares.
 - Slack Socket Mode. No public URL, no open ports.
 - Native permission relay: when a tool needs approval, the prompt is posted to Slack with a 5-letter code. Reply `yes abcde` or `no abcde`. Tolerates dictation ("Yes, abcde.").
-- Hold until idle: a message sent while Claude is mid-turn waits and is delivered when the turn ends, so Claude takes it as your instruction (see [Hold until idle](#hold-until-idle)).
+- Hold until idle: a message sent while Claude is mid-turn waits under an hourglass and is delivered when the turn ends, so Claude takes it as your instruction (see [Hold until idle](#hold-until-idle)).
 - Threads: replies go to the thread of the latest message; `new_thread` starts a new one.
 - Single-instance lock: Slack hands each event to only one open connection, so one session holds the bridge and any other session that loads the plugin stays off Slack (see [Single instance](#single-instance)).
 - Tools: `reply`, `fetch_thread`. No file uploads, by design.
@@ -95,9 +95,10 @@ To replace a live session on purpose, start the new one with `SLACK_BRIDGE_TAKEO
 Claude Code treats a channel message that arrives while the session is idle as your instruction. One that arrives while a turn is running reaches Claude marked as untrusted external data, and Claude may not act on it. So the bridge holds messages while the session is mid-turn:
 
 - The plugin's hooks ([hooks/hooks.json](hooks/hooks.json)) tell the server when a turn starts (`UserPromptSubmit`) and ends (`Stop`, `StopFailure`) by calling its `turn` tool. Each session reports to its own copy of the server, so only the turns of the session that holds the bridge hold its messages.
-- A message that arrives mid-turn waits. When the turn ends, everything held is delivered as one message, oldest first, each with its own thread.
+- A message that arrives mid-turn gets an hourglass reaction and waits. When the turn ends, everything held is delivered as one message, oldest first, each with its own thread, and the hourglasses are removed.
 - Permission replies (`yes abcde`) are never held.
 - Safety net: if the turn has not ended 5 minutes after the first message was held, the held messages are delivered anyway. An interrupted turn (Esc) fires no hook, so the first message after one waits that long.
+- The hourglass needs the `reactions:write` bot scope. It is in the manifest; for a Slack app created before 0.2.0, add it under OAuth & Permissions and reinstall the app to the workspace. Without it messages are still held, just without the hourglass.
 - Needs a Claude Code version with `mcp_tool` hooks; tested on 2.1.332. Minimum version: TODO: verify.
 
 ## Security notes
