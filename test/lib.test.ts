@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test'
-import { accept, chunk, formatPermission, parseEnv, parseVerdict, stillOwner, threadOf } from '../lib.ts'
+import { accept, chunk, formatPermission, parseEnv, parseVerdict, shouldTakeBridge, stillOwner, threadOf } from '../lib.ts'
 
 const cfg = { owner: 'UOWNER', channel: 'CBRIDGE', botUserId: 'UBOT' }
 const msg = { user: 'UOWNER', channel: 'CBRIDGE', ts: '1.1', text: 'hi' }
@@ -60,9 +60,26 @@ describe('formatPermission', () => {
   })
 })
 
+describe('shouldTakeBridge', () => {
+  const alive = (pid: number) => pid === 456 // 456 is the only running process
+  test('a live session holds the lock', () => expect(shouldTakeBridge('456\n', false, alive)).toBe(false))
+  test('takeover wins over a live session', () => expect(shouldTakeBridge('456\n', true, alive)).toBe(true))
+  test('the lock owner is gone', () => expect(shouldTakeBridge('789\n', false, alive)).toBe(true))
+  test('missing or garbled lock', () => {
+    expect(shouldTakeBridge(null, false, alive)).toBe(true)
+    expect(shouldTakeBridge('', false, alive)).toBe(true)
+    expect(shouldTakeBridge('not a pid', false, alive)).toBe(true)
+  })
+  test('zero and negative PIDs are never asked about', () => {
+    // kill(0) and kill(-n) address process groups, so they would always look alive.
+    expect(shouldTakeBridge('0', false, () => true)).toBe(true)
+    expect(shouldTakeBridge('-456', false, () => true)).toBe(true)
+  })
+})
+
 describe('stillOwner', () => {
   test('lock names us', () => expect(stillOwner('123\n', 123)).toBe(true))
-  test('a newer session took over', () => expect(stillOwner('456', 123)).toBe(false))
+  test('another session took over', () => expect(stillOwner('456', 123)).toBe(false))
   test('missing or garbled lock keeps the current bridge', () => {
     expect(stillOwner(null, 123)).toBe(true)
     expect(stillOwner('', 123)).toBe(true)
