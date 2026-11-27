@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test'
-import { HOLD_TIMEOUT_MS, accept, chunk, combine, formatPermission, holdExpired, parseEnv, parseVerdict, shouldHold, shouldTakeBridge, stillOwner, threadOf } from '../lib.ts'
+import { HOLD_TIMEOUT_MS, accept, chunk, combine, formatPermission, holdExpired, isStop, parseEnv, parseVerdict, shouldHold, shouldTakeBridge, stillOwner, threadOf } from '../lib.ts'
 
 const cfg = { owner: 'UOWNER', channel: 'CBRIDGE', botUserId: 'UBOT' }
 const msg = { user: 'UOWNER', channel: 'CBRIDGE', ts: '1.1', text: 'hi' }
@@ -68,6 +68,23 @@ describe('shouldHold', () => {
     expect(shouldHold('No, ABCDE.', true)).toBe(false)
   })
   test('text that only looks like a verdict is held', () => expect(shouldHold('yes please do it', true)).toBe(true))
+  test('"stop" passes even mid-turn', () => expect(shouldHold('Stop.', true)).toBe(false))
+})
+
+describe('isStop', () => {
+  test('the word alone', () => expect(isStop('stop')).toBe(true))
+  test('dictation capitals and punctuation', () => {
+    expect(isStop('Stop.')).toBe(true)
+    expect(isStop('STOP!')).toBe(true)
+    expect(isStop(' Stop, I changed my mind')).toBe(true)
+  })
+  test('followed by more words', () => expect(isStop('stop and wait for me')).toBe(true))
+  test('longer words are not the word', () => {
+    expect(isStop('stopping by later')).toBe(false)
+    expect(isStop('stopwatch app idea')).toBe(false)
+    expect(isStop('stop-gap fix is fine')).toBe(false)
+  })
+  test('only at the start', () => expect(isStop('please stop')).toBe(false))
 })
 
 describe('holdExpired', () => {

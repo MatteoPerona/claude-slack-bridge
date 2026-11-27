@@ -95,7 +95,16 @@ export function formatPermission(p: {
 // untrusted external data. So a message is held while a turn runs and delivered when it
 // ends. Permission verdicts are never held: the turn waiting on one is busy by definition.
 export function shouldHold(text: string, busy: boolean): boolean {
-  return busy && !parseVerdict(text)
+  return busy && !parseVerdict(text) && !isStop(text)
+}
+
+// A message that starts with the word "stop" is meant for the turn in progress, so it is
+// never held. Dictation punctuation is fine ("Stop.", "Stop, wait"); longer words
+// ("stopping", "stopwatch", "stop-gap") are not the word.
+const STOP_RE = /^\s*stop(?![\w-])/i
+
+export function isStop(text: string): boolean {
+  return STOP_RE.test(text)
 }
 
 // Safety net: an interrupted turn never reports its end, so held messages go out anyway

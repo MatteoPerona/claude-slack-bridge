@@ -97,6 +97,7 @@ Claude Code treats a channel message that arrives while the session is idle as y
 - The plugin's hooks ([hooks/hooks.json](hooks/hooks.json)) tell the server when a turn starts (`UserPromptSubmit`) and ends (`Stop`, `StopFailure`) by calling its `turn` tool. Each session reports to its own copy of the server, so only the turns of the session that holds the bridge hold its messages.
 - A message that arrives mid-turn gets an hourglass reaction and waits. When the turn ends, everything held is delivered as one message, oldest first, each with its own thread, and the hourglasses are removed.
 - Permission replies (`yes abcde`) are never held.
+- A message that starts with the word `stop` ("Stop.", "Stop, wait") is never held either. It reaches Claude mid-turn, marked as external like any mid-turn message, so Claude sees it at its next step but decides for itself whether to stop.
 - Safety net: if the turn has not ended 5 minutes after the first message was held, the held messages are delivered anyway. An interrupted turn (Esc) fires no hook, so the first message after one waits that long.
 - The hourglass needs the `reactions:write` bot scope. It is in the manifest; for a Slack app created before 0.2.0, add it under OAuth & Permissions and reinstall the app to the workspace. Without it messages are still held, just without the hourglass.
 - Needs a Claude Code version with `mcp_tool` hooks; tested on 2.1.332. Minimum version: TODO: verify.
